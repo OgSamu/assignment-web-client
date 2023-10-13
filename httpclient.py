@@ -41,13 +41,24 @@ class HTTPClient(object):
         return None
 
     def get_code(self, data):
-        return None
+        code = data.splitlines()
+        statCode = code[0].split(" ")
+
+        return statCode[1]
 
     def get_headers(self,data):
         return None
 
     def get_body(self, data):
-        return None
+        resBody = data.split("\r\n\r\n")
+        return resBody[1]
+    
+    def extractPort(self, parsedURL):
+         # Return port if it exists, otherwise default to 80
+        return parsedURL.port if parsedURL.port else 80
+    
+    def extractPath(self, parsedURL):
+        return parsedURL.path if parsedURL.path else "/"
     
     def sendall(self, data):
         self.socket.sendall(data.encode('utf-8'))
@@ -70,11 +81,54 @@ class HTTPClient(object):
     def GET(self, url, args=None):
         code = 500
         body = ""
+
+        url_details = urllib.parse.urlparse(url)
+        domain = url_details.hostname
+        port_num = self.extractPort(url_details)
+        endpoint = self.extractPath(url_details)
+
+    
+        request_data = f'GET {endpoint} HTTP/1.1\r\nHost: {url_details.netloc}\r\nConnection: close\r\n\r\n'
+
+        # Establish connection, send the request, receive response, and close connection
+        self.connect(domain, port_num)
+        self.sendall(request_data)
+        raw_response = self.recvall(self.socket)
+        self.close()
+
+        # Extract the status code and content from the response
+        code = int(self.get_code(raw_response))
+        body = self.get_body(raw_response)
+
         return HTTPResponse(code, body)
 
     def POST(self, url, args=None):
         code = 500
         body = ""
+
+         # Decompose the URL into its parts
+        url_data = urllib.parse.urlparse(url)
+        domain_name = url_data.hostname
+        port_number = self.extractPort(url_data)
+        route = self.extractPath(url_data)
+
+        # Process and encode the POST parameters
+        post_data = urllib.parse.urlencode(args) if args else ""
+        content_length = len(post_data)
+
+        # Build the POST request
+        post_request = f'POST {route} HTTP/1.1\r\nHost: {url_data.netloc}\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {content_length}\r\nConnection: close\r\n\r\n{post_data}'
+
+        # Execute connection steps: connect, send the request, retrieve response, disconnect
+        self.connect(domain_name, port_number)
+        self.sendall(post_request)
+        raw_response = self.recvall(self.socket)
+        self.close()
+
+        # Parse the received response to extract status code and body
+        code = int(self.get_code(raw_response))
+        body = self.get_body(raw_response)
+
         return HTTPResponse(code, body)
 
     def command(self, url, command="GET", args=None):
